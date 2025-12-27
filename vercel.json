@@ -1,0 +1,13 @@
+{
+  "buildCommand": "pnpm build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "env": {
+    "VERCEL_URL": "@vercel_url"
+  }
+}
