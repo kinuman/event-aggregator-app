@@ -1,18 +1,15 @@
 import { VercelRequest, VercelResponse } from "@vercel/node";
+import { AggregatedEvent } from "./aggregate";
 
-export interface MeetupEvent {
-  id: string;
-  platform: "meetup";
-  title: string;
-  description: string;
-  startDate: string;
-  endDate?: string;
-  location: string;
-  url: string;
-  attendees?: number;
-  capacity?: number;
-  imageUrl?: string;
-}
+// --- IMPORTANT NOTE ON MEETUP API ---
+// Meetup has deprecated its legacy API and now primarily uses a GraphQL API
+// which requires OAuth 2.0 authentication. The endpoint used below is
+// highly unreliable and may stop working at any time.
+//
+// For a robust solution, you must refactor this file to:
+// 1. Implement an OAuth 2.0 flow to get an access token.
+// 2. Use the modern GraphQL API endpoint with the access token.
+// ------------------------------------
 
 export default async function handler(
   req: VercelRequest,
@@ -21,34 +18,39 @@ export default async function handler(
   try {
     const { location = "Tokyo", limit = 30 } = req.query;
 
-    // Meetup API: https://www.meetup.com/api/
-    // Note: Using public events endpoint (no authentication required)
+    // Legacy Meetup API endpoint - use with caution
     const meetupUrl = `https://www.meetup.com/api/3/find/events?location=${location}&text=AI&page=${limit}`;
+
+    console.log(`Fetching Meetup events from legacy endpoint: ${meetupUrl}` );
 
     const response = await fetch(meetupUrl, {
       headers: {
         "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        // Use a more descriptive User-Agent
+        "User-Agent": "EventAggregatorApp/1.0 (Contact: user@example.com)",
       },
     });
 
     if (!response.ok) {
-      console.warn(`Meetup API warning: ${response.status} ${response.statusText}`);
+      console.error(`Meetup API Error: ${response.status} ${response.statusText}`);
+      // Return a 200 with empty data to allow aggregation to continue
       return res.status(200).json({
         events: [],
         total: 0,
+        warning: `Meetup API failed with status ${response.status}. This is likely due to the deprecated endpoint. Refactor to use GraphQL/OAuth.`,
         timestamp: new Date().toISOString(),
       });
     }
 
     const data = await response.json();
 
-    const events: MeetupEvent[] = (data || []).map((event: any) => ({
+    const events: AggregatedEvent[] = (data || []).map((event: any) => ({
       id: `meetup-${event.id}`,
       platform: "meetup",
       title: event.name,
       description: event.description || "",
       startDate: new Date(event.time).toISOString(),
+      endDate: event.time + event.duration ? new Date(event.time + event.duration).toISOString() : undefined,
       location: event.venue?.name || "Online",
       url: event.link,
       attendees: event.yes_rsvp_count,
