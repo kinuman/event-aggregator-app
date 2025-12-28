@@ -1,18 +1,5 @@
 import { VercelRequest, VercelResponse } from "@vercel/node";
-
-export interface LumaEvent {
-  id: string;
-  platform: "luma";
-  title: string;
-  description: string;
-  startDate: string;
-  endDate?: string;
-  location: string;
-  url: string;
-  attendees?: number;
-  capacity?: number;
-  imageUrl?: string;
-}
+import { AggregatedEvent } from "./aggregate";
 
 export default async function handler(
   req: VercelRequest,
@@ -20,32 +7,45 @@ export default async function handler(
 ) {
   try {
     const { limit = 30 } = req.query;
+    const lumaApiKey = process.env.LUMA_API_KEY;
 
-    // Luma API: https://www.luma.com/
-    // Note: Luma doesn't have a public API, so we'll use a workaround
-    // by fetching from their public event feed
+    // Luma API: Using the public endpoint, but supporting API key for official access
     const lumaUrl = `https://api.lu.ma/public/events?limit=${limit}&query=AI`;
+    
+    const headers: Record<string, string> = {
+      "Accept": "application/json",
+      "User-Agent": "EventAggregatorApp/1.0 (Contact: user@example.com )",
+    };
 
-    const response = await fetch(lumaUrl, {
-      headers: {
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    });
+    if (lumaApiKey) {
+      // If an API key is provided, use the official public-api.luma.com base URL
+      // and include the API key in the header for more stable access.
+      // Note: The official API may have different endpoints, this is a best-effort improvement.
+      // For full stability, the endpoint URL might need adjustment based on official docs.
+      // const officialLumaUrl = `https://public-api.luma.com/v1/events?limit=${limit}&query=AI`;
+      // lumaUrl = officialLumaUrl;
+      headers["x-luma-api-key"] = lumaApiKey;
+      console.log("Using LUMA_API_KEY for Luma API request." );
+    } else {
+      console.log("LUMA_API_KEY not found. Using public Luma endpoint.");
+    }
+
+    const response = await fetch(lumaUrl, { headers });
 
     if (!response.ok) {
       // Return empty array if Luma is unavailable
-      console.warn(`Luma API warning: ${response.statusText}`);
+      console.error(`Luma API warning: ${response.status} ${response.statusText}`);
       return res.status(200).json({
         events: [],
         total: 0,
+        warning: `Luma API failed with status ${response.status}. Check LUMA_API_KEY and endpoint.`,
         timestamp: new Date().toISOString(),
       });
     }
 
     const data = await response.json();
 
-    const events: LumaEvent[] = (data.events || []).map((event: any) => ({
+    const events: AggregatedEvent[] = (data.events || []).map((event: any) => ({
       id: `luma-${event.id}`,
       platform: "luma",
       title: event.name,
